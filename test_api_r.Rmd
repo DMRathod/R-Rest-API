@@ -1,0 +1,118 @@
+---
+title: "test_api"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+## transform wide to long and long to wide format
+#' @post /widelong
+#' @get /widelong
+function(req) {
+  # library
+  require(tidyr)
+  require(dplyr)
+  require(magrittr)
+  require(httr)
+  require(jsonlite)
+  # post body
+  body <- jsonlite::fromJSON(req$postBody)
+  .data <- body$.data
+  .trans <- body$.trans
+  .key <- body$.key
+  .value <- body$.value
+  .select <- body$.select
+  # wide or long transformation
+  if(.trans == 'l' || .trans == 'long') {
+    .data %<>% gather(key = !!.key, value = !!.value, !!.select)
+    return(.data)
+  } else if(.trans == 'w' || .trans == 'wide') {
+    .data %<>% spread(key = !!.key, value = !!.value)
+    return(.data)
+  } else {
+    print('Please specify the transformation')
+  }
+}
+
+```
+```{R}
+library(plumber)
+
+widelong_api <- plumber::plumb("./path/to/directory/widelongwide.R")
+widelong_api$run(host = '127.0.0.1', port = 8000)
+
+```
+```{R}
+
+FROM trestletech/plumber
+
+# Install dependencies
+RUN apt-get update --allow-releaseinfo-change && apt-get install -y \
+    liblapack-dev \
+    libpq-dev
+
+# Install R packages
+RUN R -e "install.packages(c('tidyr', 'dplyr', 'magrittr', 'httr', 'jsonlite'), \
+repos = 'http://cran.us.r-project.org')"
+
+# Add API
+COPY ./path/to/directory/widelongwide.R /widelongwide.R
+
+# Make port available
+EXPOSE 8000
+
+# Entrypoint
+ENTRYPOINT ["R", "-e", \
+"widelong <- plumber::plumb('widelongwide.R'); \
+widelong$run(host = '0.0.0.0', port= 8000)"]
+
+CMD ["/widelongwide.R"]
+```
+```{R}
+library(httr)
+library(jsonlite)
+options(stringsAsFactors = FALSE)
+
+# url for local testing
+url <- "http://127.0.0.1:8000"
+
+# url for docker container
+url <- "http://0.0.0.0:8000"
+
+# read example stock data
+.data <- read.csv('./path/to/data/stocks.csv')
+
+# create example body
+body <- list(
+  .data = .data,
+  .trans = "w",
+  .key = "stock",
+  .value = "price",
+  .select = c("X","Y","Z")
+)
+
+# set API path
+path <- 'widelong'
+
+# send POST Request to API
+raw.result <- POST(url = url, path = path, body = body, encode = 'json')
+
+# check status code
+raw.result$status_code
+
+# retrieve transformed example stock data
+.t_data <- fromJSON(rawToChar(raw.result$content))
+
+
+```
+
+
+
+
+
+
+
+
